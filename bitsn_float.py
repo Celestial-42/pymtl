@@ -32,8 +32,6 @@ def real_to_bits(real, frac_bits):
                 else:
                     bits.append(1)
                     break
-                if (exp <= -126):
-                    break
                 # print("zero padding", exp, bits, frac_p)
 
         # print("AF zero pad", exp, bits, frac_p)
@@ -49,15 +47,38 @@ def real_to_bits(real, frac_bits):
     return exp, bits
 
 
-def real_to_bitsn_float(real, exp_bitsn, frac_bitsn, prec_bitsn):
-    exp, bits = real_to_bits(real, frac_bitsn + prec_bitsn)
+def rte(bits, exp, frac_bitsn):
     rte_deci = ''.join(map(str, bits[:frac_bitsn]))
-    rte_frac = ''.join(map(str, bits[frac_bitsn:]))
+    rte_carry = 0
+    if bits[frac_bitsn]:
+        # print("tail_bits",bits[frac_bitsn+1:])
+        if 1 in bits[frac_bitsn + 1:]:
+            rte_carry = 1
+        elif bits[frac_bitsn - 1] == 1:
+            rte_carry = 1
+    # print("rte_carry:",rte_carry)
+    frac_class = mk_bits(frac_bitsn)
+    frac = frac_class(int(rte_deci, 2))
+    if rte_carry:
+        if (frac + 1).uint() == 0:
+            exp += 1  # rte carry overflow
+            frac = frac_class(0)
+        else:
+            frac = frac + 1
+
+    return exp, frac
+
+
+def real_to_bitsn_float(real, exp_bitsn, frac_bitsn, prec_bitsn):
     exp_class = mk_bits(exp_bitsn)
     frac_class = mk_bits(frac_bitsn)
-    exp = exp_class(exp + (2 ** (exp_bitsn - 1) - 1))
-    frac = frac_class(int(rte_deci, 2))
     temp_class = mk_bits(1 + exp_bitsn + frac_bitsn)
+
+    exp, bits = real_to_bits(real, frac_bitsn + prec_bitsn)
+    # round to even
+    exp, frac = rte(bits, exp, frac_bitsn)
+
+    exp = exp_class(exp + (2 ** (exp_bitsn - 1) - 1))
     temp_ins = temp_class(concat(Bits1(0), exp, frac) if real >= 0 else concat(Bits1(1), exp, frac))
     if (real == 0):
         return bitsn_float(exp_class(0), frac_class(0), temp_class(0), prec_bitsn)
@@ -73,7 +94,7 @@ class bitsn_float(object):
         self.bits = 1 + exp_bits_num + frac_bits_num
         self.float_class = mk_bitstruct(f"Float{self.bits}", {
             'sign': mk_bits(1),
-            'exp': mk_bits(exp_bits_num),
+            'exp' : mk_bits(exp_bits_num),
             'frac': mk_bits(frac_bits_num),
         })
         if (ini_val):
@@ -134,7 +155,7 @@ class bitsn_float(object):
 
     def __truediv__(self, other):
         temp_add = other.real() * (1.0 / self.real()) if self.frac_bitsn > other.frac_bitsn else self.real() * (
-                    1.0 / other.real())
+                1.0 / other.real())
         # print(self.real(),other.real(),1.0 / other.real(),temp_add)
         exp_bitsn, frac_bitsn, cal_prec_ext_bits_num = self.prec_get(other)
         return real_to_bitsn_float(temp_add, exp_bitsn, frac_bitsn, cal_prec_ext_bits_num)
@@ -150,7 +171,7 @@ if __name__ == '__main__':
     # print(real_to_bits(0, 10))
     # print(real_to_bits(1, 10))
     # print(real_to_bits(-1, 10))
-    # print(real_to_bits(0.000000003, 10))
+    print(real_to_bits(0.000000003, 5))
 
     print("main--begin")
     a = bitsn_float(8, 15)
